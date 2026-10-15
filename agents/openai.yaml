@@ -1,0 +1,4 @@
+interface:
+  display_name: "trans"
+  short_description: "论文英中对照 PDF：左侧英文原页，右侧可检索中文，可回存 Zotero"
+  default_prompt: "请使用 $trans 将这篇英文论文制作成左英文、右可检索中文的双语 PDF，包含附录并保留参考文献原文。"
