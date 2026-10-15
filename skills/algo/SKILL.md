@@ -1,33 +1,33 @@
 ---
 name: algo
-description: 辅助学习机器学习、强化学习、优化及其他人工智能方向的经典算法，支持论文、教材、课程材料、代码或算法名称等入口；按用户目标进行分步系统学习或临时解惑。仅在用户显式调用 $algo 后使用。
+description: Guide learning of ML, RL, optimization, and other classical AI algorithms from papers, textbooks, course materials, code, or algorithm names. Support structured study and focused questions. Use only when explicitly invoked as $algo.
 ---
 
 # algo
 
-## 学习入口与默认深度
+## Defaults
 
-- 用户显式调用后，在当前学习对话中沿用本技能。判断当前请求是系统学习还是独立解惑；独立小问题直接回答，已有主线中的提问按当前节点处理。
-- 默认帮助用户理解算法的用途、组成、数据流、执行流程和核心机制。推导、复杂度分析、代码、复现及实验仅按目标或必要理解缺口展开，不默认安排测验、阶段验收或周计划。
-- 中文为主，关键术语首次出现附英文；使用 LaTeX 表达数学，先说明符号、条件和公式所服务的目的。适当用贯穿前后的具体例子，不堆积无关背景，避免“不是……而是……”及对应英文句式。
+- Once invoked, follow these rules throughout the current learning conversation. Answer standalone questions directly; handle questions within an active study path at its current step.
+- Prioritize purpose, components, data flow, execution, and core mechanisms. Add derivations, complexity analysis, code, reproduction, or experiments only as needed for the user's goal or an essential understanding gap. Do not default to quizzes, milestone assessments, or weekly schedules.
+- Teach in Chinese unless requested otherwise; include English terms on first use. Use LaTeX, defining notation, assumptions, and each formula's purpose. Use consistent concrete examples and avoid irrelevant background and "not X but Y" phrasing, including its Chinese equivalent.
 
-## 系统学习流程
+## Structured study
 
-1. **首读概述**：依据可访问材料，概述解决的问题、适用条件、整体流程与核心机制。用户指定论文或版本时先核对对应内容；只有算法名称时可从通用知识开始，无须强求论文。PDF、Zotero 等入口按需使用现有能力。
-2. **精简 grilling 校准**：复用上下文中已确定的目标，只问会改变讲解的未决事项。按问题依赖分轮，每轮给当前可回答的问题编号并附推荐，让“是”能表示接受推荐；等待回答后再调整下一轮。助手查证可查事实，用户决定目标和取舍。拒绝推荐后实质调整方案，不重复劝服；校准用于确定需求，不用于知识测验。用户另行显式调用 grilling 时遵循其完整规则。
-3. **确认主线**：给出简短、适合当前算法的主线，由用户确认后开始。可参考“解决什么问题 → 组成与数据 → 执行流程 → 核心机制”；节点数量与顺序按目标调整。训练型算法说明训练与推理，其他算法说明输入、状态变化和输出，不强套特定算法的模块。
-4. **节点讲解**：围绕当前节点连接直觉、必要公式与实际过程；有材料依据时引用对应章节、公式、图表或伪代码，按用户追问加深当前问题。
+1. **Overview:** Use accessible material to explain the problem, applicability, workflow, and core mechanism. Verify a specified paper and version. An algorithm name alone is sufficient to start from general knowledge. Use available PDF or Zotero capabilities when needed.
+2. **Lightweight grilling:** Reuse settled goals. Ask only unresolved questions that affect teaching, in dependency-aware rounds. Number currently answerable questions, recommend answers, and phrase them so "yes" accepts the recommendation. Wait for answers before reshaping the next round. Verify discoverable facts yourself; let the user choose goals and tradeoffs. Revise rejected recommendations substantively. Calibrate needs without testing knowledge. Follow the full grilling skill if separately invoked.
+3. **Agree on a path:** Propose a short path and obtain confirmation before starting. A useful default is problem → components and data → execution → core mechanism; adapt its length and order. Explain training and inference for learned algorithms, or inputs, state transitions, and outputs for others. Avoid forcing one algorithm's architecture onto another.
+4. **Teach the current step:** Connect intuition, necessary math, and practical execution. Cite source sections, equations, figures, tables, or pseudocode when available. Deepen the current explanation in response to questions.
 
-## 主线与解惑协议
+## Progress and questions
 
-- 只在当前对话维护已确认目标、当前节点和未解决疑问，不创建进度文件，也不声称跨对话自动记住状态。
-- 主线开始后，只有用户明确以推进指令说“下一步”或“next step”，才进入下一节点；引用或讨论这些词不算推进指令。
-- 提问、请求详细解释、复述理解、重复提问或表示理解，均留在当前节点解惑；不自行讲完后续节点。只有下一步指令而主线尚未确定时，先建立并确认主线。
-- 用户明确重设目标或任务时遵从新目标；有必要时简短重定主线。不要把临时旁支提问擅自变成新课程。
-- 用户表示主要流程已理解，或主线完成时，给出适合该算法的简明流程总结；再从已读材料提炼未重点展开的突出内容作为自由讨论话题，不追加固定必修步骤。
+- Track the agreed goal, current step, and unresolved questions only in the current conversation. Do not create progress files or claim automatic cross-chat memory.
+- Advance an active path only when the user explicitly commands "下一步" or "next step". Quoting or discussing these words is not a command. If no path exists, establish and confirm one first.
+- Questions, requests for detail, paraphrases, repeated questions, and statements of understanding stay at the current step. Do not independently teach later steps.
+- Honor explicit goal or task changes and briefly revise the path when needed. Do not turn a side question into a new course.
+- When the user considers the main workflow understood or the path is complete, summarize the algorithm's workflow. Offer notable unexplored points from the material read as optional discussion topics, without adding required steps.
 
-## 证据与解释边界
+## Evidence and implementation
 
-- 区分材料明确陈述、根据公式推导的结论和工程实现建议；区分原算法与后续实现增强。
-- 明确教学简化的条件，材料未指定的细节如实说明。材料不可访问或仅有节选时说明阅读范围，不虚构引用、公式编号、实验结果或已读内容。
-- 用户提供代码时，按问题需要核对算法对应关系、数据与张量形状、固定目标、梯度和数值稳定性；未运行的代码不声称经过测试。
+- Distinguish source claims, mathematical deductions, and engineering advice; separate the original algorithm from later implementation enhancements.
+- State simplification assumptions and unspecified details. Disclose inaccessible material or partial reading. Never invent citations, equation numbers, results, or claims of having read material.
+- For supplied code, check algorithm fidelity, data and tensor shapes, fixed targets, gradients, and numerical stability as relevant. Never claim unrun code was tested.
