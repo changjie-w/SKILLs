@@ -189,9 +189,15 @@ def pixels(page, box, x_shift=0):
     return pix.width, pix.height, pix.samples
 
 
-def compare_pixels(original, result, box, x_shift, label):
-    a, b = pixels(original, box), pixels(result, box, x_shift)
-    require(a == b, f"{label}: preserved pixels differ (72 dpi); inspect region boundaries")
+def compare_pixels(original, result, box, x_shift, label, reference, warnings):
+    actual = pixels(result, box, x_shift)
+    expected = pixels(reference, box, x_shift)
+    require(actual == expected, f"{label}: preserved pixels differ from matched embedding (72 dpi); inspect region boundaries")
+    # An exact unmodified control is evidence of embedding/rendering effects;
+    # pixel counts or color-distance thresholds alone cannot establish safety.
+    if actual != pixels(original, box):
+        warnings.append({"kind": "embedding_render_difference", "check": label,
+                         "evidence": "Exact 72 dpi match to unmodified source embedded at the same position; no pixel tolerance"})
 
 
 def verify_output(path, source, entries, report):
@@ -203,12 +209,20 @@ def verify_output(path, source, entries, report):
             label = f"source page {item['source_page']}"
             require(abs(result.rect.width - 2 * width) < .01 and abs(result.rect.height - height) < .01,
                     f"{label}: output dimensions differ")
-            compare_pixels(original, result, original.rect, 0, f"{label}, English half")
-            if item["mode"] == "copy":
-                compare_pixels(original, result, original.rect, width, f"{label}, references half")
-            else:
-                for region in item.get("preserve", []):
-                    compare_pixels(original, result, region["rect"], width, f"{label}, {region['id']}")
+            # Match build_pdf's page size, copy path and embedding positions.
+            with fitz.open() as reference, fitz.open() as untouched:
+                untouched.insert_pdf(source, from_page=item["source_page"] - 1, to_page=item["source_page"] - 1)
+                expected = reference.new_page(width=2 * width, height=height)
+                expected.show_pdf_page(original.rect, source, item["source_page"] - 1)
+                expected.show_pdf_page(original.rect + (width, 0, width, 0), untouched, 0)
+                warnings = report.setdefault("warnings", [])
+                compare_pixels(original, result, original.rect, 0, f"{label}, English half", expected, warnings)
+                if item["mode"] == "copy":
+                    compare_pixels(original, result, original.rect, width, f"{label}, references half", expected, warnings)
+                else:
+                    for region in item.get("preserve", []):
+                        compare_pixels(original, result, region["rect"], width, f"{label}, {region['id']}", expected, warnings)
+            if item["mode"] != "copy":
                 for region in item["translations"]:
                     box = fitz.Rect(region["rect"]) + (width, 0, width, 0)
                     actual = result.get_text("text", clip=box, sort=True)

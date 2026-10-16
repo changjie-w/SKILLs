@@ -3,13 +3,14 @@
 import copy
 import json
 from pathlib import Path
+import random
 import tempfile
 import unittest
 import subprocess
 import sys
 
 import pymupdf as fitz
-from pdf_regions import LayoutError, build_pdf, digest, inspect_pdf, normalized, put_translation, view_data
+from pdf_regions import LayoutError, build_pdf, digest, inspect_pdf, normalized, pixels, put_translation, verify_output, view_data
 
 
 def make_fixture(directory):
@@ -176,6 +177,92 @@ class RegionTests(unittest.TestCase):
         with self.assertRaisesRegex(LayoutError, "glyph extends outside region"):
             self.build(plan)
         self.assertFalse((self.root / "result.pdf").exists())
+
+
+class PreservationTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="trans-pixels-test-")
+        self.root = Path(self.temp.name)
+        self.source = self.root / "source.pdf"
+        with fitz.open() as doc:
+            page = doc.new_page(width=595.2756, height=340.125)
+            page.insert_text((20, 24), "A title", fontsize=12)
+            rng = random.Random(0)
+            shape = page.new_shape()
+            for _ in range(100):
+                shape.draw_line((rng.uniform(20, 570), rng.uniform(50, 270)),
+                                (rng.uniform(20, 570), rng.uniform(50, 270)))
+                shape.finish(width=.15)
+            shape.commit()
+            page.draw_line((40.25, 300.125), (43.25, 300.125), width=.1)
+            for position, text, size in [((200, 310), "x", 10), ((205, 305), "2", 6),
+                                         ((214, 310), "-", 10), ((227, 310), "42", 10)]:
+                page.insert_text(position, text, fontsize=size)
+            doc.save(self.source)
+        self.plan = {"version": 1, "source_sha256": digest(self.source), "pages": [{
+            "source_page": 1, "mode": "translate",
+            "translations": [{"id": "title", "rect": [18, 5, 570, 35], "text": "标题"}],
+            "preserve": [{"id": "figure", "kind": "figure", "rect": [18, 45, 580, 330]}]}]}
+        plan_path = self.root / "plan.json"
+        plan_path.write_text(json.dumps(self.plan, ensure_ascii=False), encoding="utf-8")
+        self.output, self.report_path = self.root / "result.pdf", self.root / "report.json"
+        self.report = build_pdf(self.source, plan_path, self.output, self.report_path)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_unmodified_right_vectors_and_warning_evidence(self):
+        self.assertEqual(self.report["status"], "file_checks_passed")
+        self.assertEqual(self.report["source_sha256"], digest(self.source))
+        with fitz.open(self.source) as source, fitz.open(self.output) as result:
+            box = self.plan["pages"][0]["preserve"][0]["rect"]
+            differs = pixels(source[0], box) != pixels(result[0], box, source[0].rect.width)
+        warnings = [w for w in self.report["warnings"] if w["check"] == "source page 1, figure"]
+        # Some renderer versions may not exhibit the original embedding artifact.
+        self.assertEqual(bool(warnings), differs)
+        if warnings:
+            self.assertIn("Exact 72 dpi match", warnings[0]["evidence"])
+        summary = view_data(self.report_path, "report")
+        self.assertEqual(summary["warnings"], self.report["warnings"])
+        self.assertEqual(summary["visual_review"], "not_assessed")
+        self.assertEqual(summary["translation_accuracy"], "not_assessed")
+
+    def test_actual_protected_damage_is_rejected(self):
+        for kind, box in [("thin-line", [39, 299, 45, 302]), ("symbol", [213, 298, 219, 313]),
+                          ("superscript", [204, 297, 210, 307]), ("chart-data", [226, 298, 240, 313]),
+                          ("occlusion", [100, 120, 220, 180])]:
+            with self.subTest(kind=kind), fitz.open(self.output) as damaged:
+                page = damaged[0]
+                width = page.rect.width / 2
+                target = fitz.Rect(box) + (width, 0, width, 0)
+                if kind in {"symbol", "superscript", "chart-data"}:
+                    page.add_redact_annot(target, fill=(1, 1, 1))
+                    page.apply_redactions(images=0, graphics=0, text=0)
+                else:
+                    page.draw_rect(target, color=None, fill=(1, 1, 1))
+                if kind == "superscript":
+                    page.insert_text((width + 205, 315), "2", fontsize=6)
+                elif kind == "chart-data":
+                    page.insert_text((width + 227, 310), "43", fontsize=10)
+                path = self.root / f"{kind}.pdf"
+                damaged.save(path)
+                with fitz.open(self.source) as source, self.assertRaisesRegex(LayoutError, "figure: preserved pixels differ"):
+                    verify_output(path, source, self.plan["pages"], copy.deepcopy(self.report))
+
+    def test_displaced_or_cropped_right_content_is_rejected(self):
+        for kind in ("displaced", "cropped"):
+            with self.subTest(kind=kind), fitz.open(self.source) as source, fitz.open() as doc:
+                original = source[0]
+                width, height = original.rect.width, original.rect.height
+                page = doc.new_page(width=2 * width, height=height)
+                page.show_pdf_page(original.rect, source, 0)
+                shift = width + (.25 if kind == "displaced" else 0)
+                clip = fitz.Rect(0, 0, 230, height) if kind == "cropped" else original.rect
+                page.show_pdf_page(clip + (shift, 0, shift, 0), source, 0, clip=clip)
+                path = self.root / f"{kind}.pdf"
+                doc.save(path)
+                with self.assertRaisesRegex(LayoutError, "figure: preserved pixels differ"):
+                    verify_output(path, source, self.plan["pages"], copy.deepcopy(self.report))
 
 
 class ViewTests(unittest.TestCase):
