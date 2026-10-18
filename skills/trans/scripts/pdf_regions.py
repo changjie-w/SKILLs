@@ -189,10 +189,66 @@ def pixels(page, box, x_shift=0):
     return pix.width, pix.height, pix.samples
 
 
+def vector_roundoff_only(reference, result, target):
+    """Conservative evidence for sub-pixel drift, not a perceptual similarity test."""
+    def paths(page):
+        # Text, images and shading need their existing strict checks / visual review.
+        if any(kind not in {"fill-path", "stroke-path"} and fitz.Rect(bounds).intersects(target)
+               for kind, bounds in page.get_bboxlog()):
+            return None
+        selected, clips = [], []
+        for drawing in page.get_drawings(extended=True):
+            level = drawing.get("level", 0)
+            clips = [(depth, safe) for depth, safe in clips if depth < level]
+            if drawing["type"] == "clip":
+                items = drawing["items"]
+                safe = (len(items) == 1 and items[0][0] == "re"
+                        and items[0][1].contains(target))
+                clips.append((level, safe))
+                continue
+            if drawing["type"] not in {"s", "f", "fs"}:
+                return None  # Transparency groups or unsupported operations.
+            # PDF width=0 is a visible device hairline, not an empty path.
+            margin = max(1, 10 * (drawing.get("width") or 0)) if drawing["type"] in {"s", "fs"} else 0
+            bounds = drawing["rect"] + (-margin, -margin, margin, margin)
+            if not bounds.intersects(target):
+                continue
+            if (not target.contains(bounds) or not all(safe for _, safe in clips)
+                    or drawing.get("layer")
+                    or any(drawing.get(k) not in (None, 1) for k in ("stroke_opacity", "fill_opacity"))):
+                return None
+            selected.append({k: v for k, v in drawing.items() if k not in {"seqno", "level", "rect"}})
+        return selected or None
+
+    def same_geometry(a, b):
+        if type(a) is not type(b):
+            return False
+        if isinstance(a, (fitz.Point, fitz.Rect, fitz.Quad, tuple, list)):
+            return len(a) == len(b) and all(same_geometry(x, y) for x, y in zip(a, b))
+        if isinstance(a, float):
+            return math.isclose(a, b, rel_tol=0, abs_tol=.001)  # points, ~0.00035 mm
+        return a == b
+
+    before, after = paths(reference), paths(result)
+    return (before is not None and after is not None and len(before) == len(after)
+            and all({k: v for k, v in a.items() if k != "items"}
+                    == {k: v for k, v in b.items() if k != "items"}
+                    and same_geometry(a["items"], b["items"]) for a, b in zip(before, after)))
+
+
 def compare_pixels(original, result, box, x_shift, label, reference, warnings):
     actual = pixels(result, box, x_shift)
     expected = pixels(reference, box, x_shift)
-    require(actual == expected, f"{label}: preserved pixels differ from matched embedding (72 dpi); inspect region boundaries")
+    if actual != expected:
+        target = fitz.Rect(box) + (x_shift, 0, x_shift, 0)
+        # A small pixel delta alone never permits lost strokes, symbols or overlays.
+        max_delta = max((abs(a - b) for a, b in zip(actual[2], expected[2])), default=0)
+        require(actual[:2] == expected[:2] and max_delta <= 16
+                and vector_roundoff_only(reference, result, target),
+                f"{label}: preserved pixels differ from matched embedding (72 dpi); inspect region boundaries")
+        warnings.append({"kind": "vector_roundoff", "check": label, "max_channel_delta": max_delta,
+                         "evidence": "Same opaque vector paths/order/styles; coordinate drift <= 0.001 pt; no text/images/complex clipping"})
+        return
     # An exact unmodified control is evidence of embedding/rendering effects;
     # pixel counts or color-distance thresholds alone cannot establish safety.
     if actual != pixels(original, box):

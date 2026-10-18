@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 import pymupdf as fitz
-from pdf_regions import LayoutError, build_pdf, digest, inspect_pdf, normalized, pixels, put_translation, verify_output, view_data
+from pdf_regions import LayoutError, build_pdf, compare_pixels, digest, inspect_pdf, normalized, pixels, put_translation, verify_output, view_data
 
 
 def make_fixture(directory):
@@ -263,6 +263,52 @@ class PreservationTests(unittest.TestCase):
                 doc.save(path)
                 with self.assertRaisesRegex(LayoutError, "figure: preserved pixels differ"):
                     verify_output(path, source, self.plan["pages"], copy.deepcopy(self.report))
+
+
+class VectorRoundoffTests(unittest.TestCase):
+    box = fitz.Rect(18, 45, 280, 280)
+
+    def make_page(self, doc, drift=0, damage=None):
+        page = doc.new_page(width=300, height=300)
+        drift = .0009 if damage == "width" else drift
+        rng = random.Random(0)
+        shape = page.new_shape()
+        for _ in range(100):
+            shape.draw_line((rng.uniform(40, 250) + drift, rng.uniform(60, 250)),
+                            (rng.uniform(40, 250) + drift, rng.uniform(60, 250)))
+            shape.finish(width=.149 if damage == "width" else .15)
+        shape.commit()
+        if damage != "missing-line":
+            page.draw_line((30, 275), (33, 275), width=.1, color=(.97, .97, .97))
+        if damage == "overlay":
+            page.draw_rect((29, 274, 34, 276), color=None, fill=(1, 1, 1))
+        return page
+
+    def test_invisible_vector_drift_is_a_warning(self):
+        with fitz.open() as source, fitz.open() as result:
+            expected = self.make_page(source)
+            actual = self.make_page(result, drift=.0009)
+            warnings = []
+            compare_pixels(expected, actual, self.box, 0, "figure", expected, warnings)
+            if pixels(expected, self.box) != pixels(actual, self.box):
+                self.assertEqual(warnings[0]["kind"], "vector_roundoff")
+                self.assertIn("Same opaque vector paths", warnings[0]["evidence"])
+
+    def test_small_pixel_changes_do_not_hide_damage(self):
+        with fitz.open() as source:
+            expected = self.make_page(source)
+            for damage in ("missing-line", "overlay", "width", "clip"):
+                with self.subTest(damage=damage), fitz.open() as result, fitz.open() as clipped:
+                    actual = self.make_page(result, damage=damage)
+                    if damage == "clip":
+                        actual = clipped.new_page(width=300, height=300)
+                        clip = fitz.Rect(0, 0, 300, 270)
+                        actual.show_pdf_page(clip, result, 0, clip=clip)
+                    a, b = pixels(expected, self.box), pixels(actual, self.box)
+                    self.assertTrue(a != b, "The damage fixture must produce a pixel difference")
+                    self.assertLessEqual(max(abs(x - y) for x, y in zip(a[2], b[2])), 16)
+                    with self.assertRaisesRegex(LayoutError, "preserved pixels differ"):
+                        compare_pixels(expected, actual, self.box, 0, "figure", expected, [])
 
 
 class ViewTests(unittest.TestCase):
