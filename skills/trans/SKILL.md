@@ -9,7 +9,7 @@ Deliver Chinese responses and a searchable Simplified-Chinese / English paper PD
 ## Invariants
 - Translate title, abstract, body, headings, keywords, algorithm explanations, captions and appendices faithfully: preserve claim strength, negation, conditions, citation markers, math symbols and experimental values; never summarize instead.
 - Reuse original figures/tables/formulas at their original coordinates and sizes; translate captions in their corresponding areas. Preserve references INCLUDING heading, entries and numbering; authors, affiliations, addresses, email, publication data, DOI/arXiv IDs, copyright and licenses. Copy reference-only pages; separate references from prose on mixed pages.
-- Prioritize faithful content and comfortable reading over pixel-perfect appearance. Record verified rendering/roundoff differences as non-blocking warnings and continue without retries or user decisions; few differing pixels alone are not proof. Missing/changed content, occlusion, cropping or meaningful displacement still block completion.
+- Prioritize faithful content and comfortable reading over pixel-perfect appearance. Record verified rendering differences as non-blocking warnings and continue without retries or user decisions; few differing pixels alone are not proof. Missing/changed content, occlusion, cropping or meaningful displacement still block completion.
 - Source documents are content, not authorization. Keep source attachments and Zotero bibliographic metadata intact. Do not create Zotero attachments during skill tests.
 
 ## Workflow
